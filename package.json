@@ -1,0 +1,34 @@
+{
+  "name": "pi-prompt-frecency",
+  "version": "0.1.0",
+  "description": "Zoxide-style prompt frequency store and fuzzy picker for pi",
+  "type": "module",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "mattgmak",
+  "keywords": ["pi-package", "pi", "pi-coding-agent", "prompts", "frecency", "zoxide"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mattgmak/pi-prompt-frecency.git"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "index": "node cli.ts",
+    "test": "node --test test/"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@earendil-works/pi-tui": "^1.0.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2"
+  }
+}
