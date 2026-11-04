@@ -3,8 +3,8 @@
 Zoxide-style prompt memory for pi. The extension records prompts you send in pi.
 It ranks them by frequency and recency. A fuzzy picker opens on `ctrl+k`.
 
-Enter puts the chosen prompt at the editor cursor. You edit it, then send. Tab and
-shift-tab switch scope.
+The picker opens with the composer text as its query. `enter` puts the chosen prompt
+back in the composer in place of that text. Tab and shift-tab switch scope.
 
 ## How it works
 
@@ -48,6 +48,10 @@ active pi theme and falls back to SGR codes without one. Every row starts with a
 mark: accent on the selected row, muted on the others. The score column takes only the
 width of the widest score, so a short score does not push the text away. The selected
 row gets `selectedBg` across the full width, and `esc` and `ctrl+c` both close it.
+
+`index.ts` seeds the query with `seedQuery`, which folds the composer text to one line
+and caps it at `maxPromptChars`. A query given on the command line wins over the
+composer text.
 
 The query line carries a real text caret, and the block cursor shows its column. `left`,
 `right`, `ctrl+b`, and `ctrl+f` move it one character. `home` and `ctrl+e` move it to the

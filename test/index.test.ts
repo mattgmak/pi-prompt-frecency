@@ -3,10 +3,12 @@ import { existsSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { test } from "node:test";
 
-import type { ExtensionAPI, ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, InputEvent, Theme } from "@earendil-works/pi-coding-agent";
+import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 
-import extension, { capture, parseCommandArgs, resolveRuntime } from "../index.ts";
+import extension, { capture, openPicker, parseCommandArgs, resolveRuntime, seedQuery } from "../index.ts";
 import { GLOBAL_SCOPE } from "../src/db.ts";
+import type { PickerResult } from "../src/picker.ts";
 import { makeTempDir, openStore } from "./helpers.ts";
 
 /** Config for the whole file. PF_CONFIG wins, so the test never touches the real database. */
@@ -65,6 +67,77 @@ function inputEvent(source: "interactive" | "rpc" | "extension", text: string): 
   return { type: "input", text, source };
 }
 
+/**
+ * TUI context whose overlay factory is called at once and answered with a fixed
+ * result. It records every editor write.
+ */
+function fakeTuiContext(
+  editorText: string,
+  result: PickerResult,
+): { ctx: ExtensionContext; calls: string[]; line: (index: number) => string } {
+  const calls: string[] = [];
+  let frame: string[] = [];
+  const ui = {
+    theme: undefined,
+    notify: () => {
+      calls.push("notify");
+    },
+    getEditorText: () => editorText,
+    setEditorText: (text: string) => {
+      calls.push(`set:${text}`);
+    },
+    pasteToEditor: (text: string) => {
+      calls.push(`paste:${text}`);
+    },
+    custom: (
+      factory: (
+        tui: TUI,
+        theme: Theme,
+        keybindings: KeybindingsManager,
+        done: (value: PickerResult) => void,
+      ) => { render(width: number): string[] },
+    ) => {
+      frame = factory(
+        {} as TUI,
+        undefined as unknown as Theme,
+        undefined as unknown as KeybindingsManager,
+        () => undefined,
+      ).render(80);
+      return Promise.resolve(result);
+    },
+  };
+  const ctx = {
+    mode: "tui",
+    cwd: "/repo",
+    sessionManager: { getSessionFile: () => "/s.jsonl" },
+    ui,
+  } as unknown as ExtensionContext;
+  const rows = () => frame.filter((line) => line.trim().length > 0);
+  return { ctx, calls, line: (index: number) => rows()[index] ?? "" };
+}
+
+test("the picker query comes from the composer text", async () => {
+  const fake = fakeTuiContext("commit\nand   push", { action: "cancel" });
+  await openPicker(fake.ctx);
+  assert.ok(fake.line(2).includes("commit and push"));
+  assert.deepEqual(fake.calls, []);
+});
+
+test("enter replaces the composer text with the picked prompt", async () => {
+  const typed = fakeTuiContext("commit", { action: "accept", text: "commit and push" });
+  await openPicker(typed.ctx);
+  assert.deepEqual(typed.calls, ["set:commit and push"]);
+  const empty = fakeTuiContext("", { action: "accept", text: "commit and push" });
+  await openPicker(empty.ctx);
+  assert.deepEqual(empty.calls, ["set:commit and push"]);
+});
+
+test("an explicit query wins over the composer text", async () => {
+  const fake = fakeTuiContext("commit", { action: "cancel" });
+  await openPicker(fake.ctx, "global", "fix tests");
+  assert.ok(fake.line(2).includes("fix tests"));
+});
+
 test("the entry registers the shortcut, the command, and two handlers", () => {
   const { api, shortcuts, commands, events } = fakePi();
   extension(api);
@@ -84,6 +157,14 @@ test("command args without a scope word stay a plain query", () => {
   assert.deepEqual(parseCommandArgs("commit push"), { query: "commit push" });
   assert.deepEqual(parseCommandArgs("   "), { query: "" });
   assert.deepEqual(parseCommandArgs("globally fix"), { query: "globally fix" });
+});
+
+test("seedQuery folds composer text into one line and caps it", () => {
+  const store = openStore(makeTempDir());
+  assert.equal(seedQuery("commit\nand   push", store.config), "commit and push");
+  assert.equal(seedQuery("   ", store.config), "");
+  assert.equal(seedQuery("commit and push", { ...store.config, maxPromptChars: 6 }), "commit");
+  store.close();
 });
 
 test("resolveRuntime uses the configured runtime", () => {

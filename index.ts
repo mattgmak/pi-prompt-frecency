@@ -17,7 +17,7 @@ import { loadConfig, type FrecencyConfig, type ScopeName } from "./src/config.ts
 import { PromptStore, claimIndexRun, getScanState, setScanState } from "./src/db.ts";
 import { PromptPicker, type PickerResult, type PickerSource } from "./src/picker.ts";
 import { scanAll } from "./src/scan.ts";
-import { isStorablePrompt } from "./src/text.ts";
+import { collapseWhitespace, isStorablePrompt } from "./src/text.ts";
 
 const REPO_DIR = dirname(fileURLToPath(import.meta.url));
 const RUNTIMES = ["node", "bun", "deno"];
@@ -114,17 +114,26 @@ export function parseCommandArgs(raw: string): { scope?: ScopeName; query: strin
   return { query: words.join(" ") };
 }
 
+/**
+ * The query the picker opens with for composer text. The composer holds the
+ * prompt in its raw form, so the query takes the single line form of it.
+ */
+export function seedQuery(text: string, config: FrecencyConfig): string {
+  return collapseWhitespace(text).slice(0, config.maxPromptChars);
+}
+
 /** Open the picker and put the accepted prompt into the editor. */
-async function openPicker(
+export async function openPicker(
   ctx: ExtensionContext,
   scope?: ScopeName,
-  query = "",
+  query?: string,
 ): Promise<void> {
   const { config, store } = load();
   if (ctx.mode !== "tui" || store === null) {
     ctx.ui.notify("prompt-frecency needs the tui and a readable database", "warning");
     return;
   }
+  const seed = query ?? seedQuery(ctx.ui.getEditorText(), config);
   const source: PickerSource = {
     config,
     store,
@@ -133,10 +142,11 @@ async function openPicker(
     theme: ctx.ui.theme,
   };
   const result = await ctx.ui.custom<PickerResult>(
-    (_tui, _theme, _keybindings, done) => new PromptPicker(source, done, scope, query),
+    (_tui, _theme, _keybindings, done) => new PromptPicker(source, done, scope, seed),
   );
   if (result.action !== "accept" || result.text === undefined) return;
-  ctx.ui.pasteToEditor(result.text);
+  // The composer text is the picker query, so a pick replaces it.
+  ctx.ui.setEditorText(result.text);
 }
 
 /**
